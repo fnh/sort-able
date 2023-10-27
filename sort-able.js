@@ -1,6 +1,16 @@
 class SortTable extends HTMLTableElement {
 
-    static observedAttributes = [];
+    static KEY_ENTER = 13;
+    static KEY_SPACE = 32;
+
+    static KEY_ARROW_UP = 38;
+    static KEY_ARROW_DOWN = 40;
+
+    static DIRECTION_OF_KEY = Object.entries({
+        "default": [SortTable.KEY_ENTER, SortTable.KEY_SPACE],
+        "asc": [SortTable.KEY_ARROW_UP],
+        "desc": [SortTable.KEY_ARROW_DOWN],
+    });
 
     //---Custom Element Lifecycle Hooks----------------------------------------
 
@@ -12,16 +22,13 @@ class SortTable extends HTMLTableElement {
         this.setUp();
     }
 
-    disconnectedCallback() {
-        //console.log("Custom element removed from page.");
-    }
+    //---Generic utils---------------------------------------------------------
 
-    adoptedCallback() {
-        //console.log("Custom element moved to new page.");
-    }
-
-    attributeChangedCallback(name, oldValue, newValue) {
-        //console.log(`Attribute ${name} has changed.`);
+    lookup({ inTable, valueOf }) {
+        let tableEntry = inTable.find(([returnValue, candidates]) => candidates.includes(valueOf))
+        if (tableEntry) {
+            return tableEntry[0];
+        }
     }
 
     //---DOM utils-------------------------------------------------------------
@@ -43,58 +50,43 @@ class SortTable extends HTMLTableElement {
         return tr ? [...tr.cells] : [];
     }
 
-    activateByKeyboard(event, callback) {
-        const KEY_ENTER = 13;
-        const KEY_SPACE = 32;
-
-        const KEY_ARROW_UP = 38;
-        const KEY_ARROW_DOWN = 40
-
-        const key = event.which;
-
-        //console.log(key)
-
-        if (key === KEY_ENTER || key === KEY_SPACE) {
-            callback(event);
-        } else if (key === KEY_ARROW_UP) {
-            callback(event, "asc");
-        } else if (key === KEY_ARROW_DOWN) {
-            callback(event, "desc");
-        }
-
-
-    }
 
     //---Setup-----------------------------------------------------------------
 
     setUp() {
-        //console.log("set up", this)
-        this.makeHeaderClickable();
+        this.prepareHeader();
     }
 
-    makeHeaderClickable() {
+    prepareHeader() {
         this.ensureHeaderRow();
 
         this.getHeaderCells().forEach((th, index) => {
-            
-            console.log("adding event listeners to", th, index)
-            
             th.tabIndex = 0;
+            this.role = "button";
+            this.style.cursor = "pointer";
+            this.on(th, "click", () => this.sortBy(index, "default"))
 
-
-            th.addEventListener("click", (e) => this.sortBy(e, index), false);
-            th.addEventListener("keydown", (e) => this.activateByKeyboard(e, (e, direction = "asc") => this.sortBy(e, index, direction), false))
-
-            // TODO add suitable aria attributes
+            const keydownHandler = (direction = "default") => this.sortBy(index, direction)
+            this.on(th, "keydown", (e) => this.onApplicableKeyDown(e, keydownHandler));
         });
+    }
+
+    on(element, eventName, handler) {
+        element.addEventListener(eventName, handler, false);
+    }
+
+    onApplicableKeyDown(event, sortBy) {
+        const key = event.which;
+        const ordering =
+            this.lookup({ valueOf: key, inTable: SortTable.DIRECTION_OF_KEY });
+
+        ordering && sortBy(ordering);
     }
 
     ensureHeaderRow() {
         if (!this.hasHeaderRow()) {
             let headerElement = document.createElement('thead');
-            let firstRow = super.rows[0];
-
-            // console.log({rows: this.row, firstRow, self: this})
+            let firstRow = this.rows[0];
 
             headerElement.appendChild(firstRow);
             this.insertBefore(headerElement, this.firstChild);
@@ -103,18 +95,34 @@ class SortTable extends HTMLTableElement {
 
     //---Sorting---------------------------------------------------------------
 
-    sortBy(event, column, direction = "asc") {
-        // what if it is already sorted in that direction? likely a reverse?
+    sortBy(column, direction = "asc") {
 
         let tbody = this.getTableBody();
         let rows = [...tbody.rows];
 
-        let comparator = 
+        if (direction == "default") {
+            let currentOrder =
+                this.getHeaderCells()[column].dataset.sortAbleSortOrder;
+
+            if (currentOrder === "asc") {
+                direction = "desc";
+            }
+
+            if (currentOrder === "desc") {
+                direction = "asc";
+            }
+
+            if (!currentOrder) {
+                direction = "asc";
+            }
+        }
+
+        let comparator =
             (a, b) => a.value.localeCompare(b.value);
 
-        let orderedBy = 
-            direction === "desc" 
-                ? (a, b) => comparator(b, a) 
+        let orderedBy =
+            direction === "desc"
+                ? (a, b) => comparator(b, a)
                 : comparator;
 
         let sortedRows = rows.map((row) => {
@@ -124,20 +132,27 @@ class SortTable extends HTMLTableElement {
             }
         }).sort(orderedBy);
 
-
         sortedRows.forEach(bag => {
             tbody.appendChild(bag.element);
         })
 
+        let headerCells = this.getHeaderCells();
+
+        headerCells.forEach((cell, index) => {
+            console.log({ cell, index, column })
+            if (index == column) {
+                cell.dataset.sortAbleSortOrder = direction;
+            } else {
+                delete cell.dataset.sortAbleSortOrder;
+            }
+        });
     }
 
     getValue(row, column) {
-        // console.log({row, column})
         return row.cells[column].innerText.trim();
     }
 
 }
 
-// console.log("Defining sort-able custom element")
 
 customElements.define("sort-able", SortTable, { extends: "table" });
