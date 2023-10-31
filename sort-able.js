@@ -64,7 +64,6 @@ class SortTable extends HTMLTableElement {
             th.tabIndex = 0;
             th.setAttribute("role", "button");
             th.style.cursor = "pointer";
-            console.log({headerCell: th})
 
             this.on(th, "click", () => this.sortBy(index, "default"))
             const keydownHandler = (direction = "default") => this.sortBy(index, direction)
